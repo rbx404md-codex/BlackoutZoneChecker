@@ -1394,8 +1394,8 @@ def start_checking(chat_id):
     else:
         bot.send_message(chat_id, get_text('check_complete', chat_id))
     zip_path = None
-    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
-        zip_path = tmp.name
+    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as @robiulxxxxxxx:
+        zip_path = @robiulxxxxxxx.name
     with zipfile.ZipFile(zip_path, 'w') as zipf:
         if os.path.exists(unlinked_file_path) and os.path.getsize(unlinked_file_path) > 0:
             zipf.write(unlinked_file_path, os.path.basename(unlinked_file_path))
