@@ -15,7 +15,7 @@ import tempfile
 import random
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BOT_TOKEN = "8882043243:AAFT29QCWwNIzq2zWbitwIts29x8Q2qyTXo"
+BOT_TOKEN = "8882043243:AAGbRA-cdPMIuakoJCrojeeTS3H_QLWvwtA"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 MY_SIGNATURE = "@robiulxxxxxxx"
