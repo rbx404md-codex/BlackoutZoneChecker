@@ -13,9 +13,124 @@ import urllib3
 import zipfile
 import tempfile
 import random
+from http.server import BaseHTTPRequestHandler, HTTPServer
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BOT_TOKEN = "8882043243:AAGbRA-cdPMIuakoJCrojeeTS3H_QLWvwtA"
+def keep_alive():
+    PORT = int(os.getenv("PORT", 5000))
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"BlackoutZone Bot is running!")
+        def log_message(self, format, *args):
+            pass
+    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    server.serve_forever()
+
+GITHUB_REPO = "rbx404md-codex/BlackoutZoneChecker"
+BOT_DIR = os.path.dirname(os.path.abspath(__file__))
+_current_sha = None
+
+def get_latest_github_sha():
+    try:
+        resp = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/commits/main",
+            headers={"Accept": "application/vnd.github.sha"},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            return resp.text.strip()
+    except Exception:
+        pass
+    return None
+
+def get_local_sha():
+    try:
+        sha_file = os.path.join(BOT_DIR, ".current_sha")
+        if os.path.exists(sha_file):
+            with open(sha_file, "r") as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return None
+
+def save_local_sha(sha):
+    try:
+        with open(os.path.join(BOT_DIR, ".current_sha"), "w") as f:
+            f.write(sha)
+    except Exception:
+        pass
+
+def download_and_update():
+    import subprocess, sys
+    try:
+        latest = get_latest_github_sha()
+        if not latest:
+            return False
+        current = get_local_sha()
+        if latest == current:
+            return False
+        print(f"🆕 নতুন আপডেট পাওয়া গেছে! ডাউনলোড করছি...")
+        resp = requests.get(
+            f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/bot.py",
+            timeout=30
+        )
+        if resp.status_code != 200:
+            print("⚠️ আপডেট ডাউনলোড ব্যর্থ হয়েছে")
+            return False
+        new_code = resp.text
+        if "import telebot" not in new_code:
+            print("⚠️ ডাউনলোড করা ফাইল সঠিক নয়, বাতিল করা হলো")
+            return False
+        bot_file = os.path.join(BOT_DIR, "bot.py")
+        tmp_file = bot_file + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            f.write(new_code)
+        os.replace(tmp_file, bot_file)
+        save_local_sha(latest)
+        print(f"✅ আপডেট সফল! (SHA: {latest[:8]}) Bot restart হচ্ছে...")
+        return True
+    except Exception as e:
+        print(f"⚠️ Auto-update ত্রুটি: {e}")
+        return False
+
+def auto_update():
+    import sys
+    print("🔄 Auto-update চেকার চালু হয়েছে (প্রতি ১০ মিনিটে চেক করবে)")
+    latest = get_latest_github_sha()
+    if latest:
+        save_local_sha(latest)
+    time.sleep(60)
+    while True:
+        try:
+            if download_and_update():
+                time.sleep(2)
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            print(f"⚠️ Auto-update loop ত্রুটি: {e}")
+        time.sleep(600)
+
+def self_ping():
+    import socket
+    hostname = os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip()
+    if not hostname:
+        hostname = socket.gethostname()
+    url = f"https://{hostname}"
+    print(f"🏓 Self-ping চালু — প্রতি ৪ মিনিটে ping করবে: {url}")
+    time.sleep(30)
+    while True:
+        try:
+            requests.get(url, timeout=10)
+        except Exception:
+            pass
+        time.sleep(240)
+
+threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=auto_update, daemon=True).start()
+threading.Thread(target=self_ping, daemon=True).start()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 MY_SIGNATURE = "@robiulxxxxxxx"
@@ -1394,8 +1509,8 @@ def start_checking(chat_id):
     else:
         bot.send_message(chat_id, get_text('check_complete', chat_id))
     zip_path = None
-    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as @robiulxxxxxxx:
-        zip_path = @robiulxxxxxxx.name
+    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp_file:
+        zip_path = tmp_file.name
     with zipfile.ZipFile(zip_path, 'w') as zipf:
         if os.path.exists(unlinked_file_path) and os.path.getsize(unlinked_file_path) > 0:
             zipf.write(unlinked_file_path, os.path.basename(unlinked_file_path))
@@ -1487,6 +1602,90 @@ def process_sell_combo_price(message, file_content, file_name, valid_count):
         bot.send_message(DEVELOPER_ID, f"💰 ব্যবহারকারী {user_id} {new_file_name} কম্বো বিক্রি করেছে {price} পয়েন্টে। বৈধ অ্যাকাউন্ট সংখ্যা: {valid_count}")
     except ValueError:
         bot.send_message(user_id, "❌ দয়া করে একটি সঠিক সংখ্যা পাঠান")
+
+@bot.message_handler(commands=['restart'])
+def restart_bot(message):
+    import sys
+    if message.chat.id != DEVELOPER_ID:
+        bot.reply_to(message, "❌ অনুমোদিত নয়")
+        return
+    bot.reply_to(message, "🔄 Bot restart হচ্ছে... কয়েক সেকেন্ড অপেক্ষা করুন।")
+    time.sleep(1)
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+@bot.message_handler(commands=['update'])
+def manual_update(message):
+    import sys
+    if message.chat.id != DEVELOPER_ID:
+        bot.reply_to(message, "❌ অনুমোদিত নয়")
+        return
+    msg = bot.reply_to(message, "🔍 GitHub চেক করছি...")
+    if download_and_update():
+        bot.edit_message_text("✅ আপডেট সফল! Bot restart হচ্ছে...", message.chat.id, msg.message_id)
+        time.sleep(2)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    else:
+        latest = get_latest_github_sha()
+        local = get_local_sha()
+        if latest and local and latest == local:
+            bot.edit_message_text("✅ Bot ইতিমধ্যে সর্বশেষ version-এ আছে।", message.chat.id, msg.message_id)
+        else:
+            bot.edit_message_text("⚠️ আপডেট করা সম্ভব হয়নি। পরে আবার চেষ্টা করুন।", message.chat.id, msg.message_id)
+
+@bot.message_handler(commands=['status'])
+def bot_status(message):
+    if message.chat.id != DEVELOPER_ID:
+        bot.reply_to(message, "❌ অনুমোদিত নয়")
+        return
+    import platform
+    start_time = getattr(bot_status, '_start_time', None)
+    if not start_time:
+        bot_status._start_time = datetime.now()
+        start_time = bot_status._start_time
+    uptime = datetime.now() - start_time
+    hours, rem = divmod(int(uptime.total_seconds()), 3600)
+    minutes, seconds = divmod(rem, 60)
+    latest_sha = get_latest_github_sha() or "N/A"
+    local_sha = get_local_sha() or "N/A"
+    update_status = "✅ আপডেট আছে" if latest_sha == local_sha else "🆕 নতুন আপডেট আছে"
+    total_users = len(referral_points)
+    text = (
+        f"🤖 *BlackoutZone Bot Status*\n\n"
+        f"⏱ Uptime: `{hours}h {minutes}m {seconds}s`\n"
+        f"👥 মোট ব্যবহারকারী: `{total_users}`\n"
+        f"🔖 Local SHA: `{local_sha[:8] if local_sha != 'N/A' else 'N/A'}`\n"
+        f"🌐 GitHub SHA: `{latest_sha[:8] if latest_sha != 'N/A' else 'N/A'}`\n"
+        f"📦 Version: {update_status}\n"
+        f"🏓 Self-ping: ✅ সক্রিয়\n"
+        f"🔄 Auto-update: ✅ সক্রিয়"
+    )
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(
+        telebot.types.InlineKeyboardButton("🔄 Restart", callback_data="dev_restart"),
+        telebot.types.InlineKeyboardButton("⬆️ Update", callback_data="dev_update")
+    )
+    bot.reply_to(message, text, parse_mode="Markdown", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data in ['dev_restart', 'dev_update'])
+def dev_status_buttons(call):
+    import sys
+    if call.from_user.id != DEVELOPER_ID:
+        bot.answer_callback_query(call.id, "❌ অনুমোদিত নয়")
+        return
+    if call.data == 'dev_restart':
+        bot.answer_callback_query(call.id, "🔄 Restart হচ্ছে...")
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id)
+        bot.send_message(DEVELOPER_ID, "🔄 Bot restart হচ্ছে...")
+        time.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    elif call.data == 'dev_update':
+        bot.answer_callback_query(call.id, "🔍 চেক করছি...")
+        if download_and_update():
+            bot.send_message(DEVELOPER_ID, "✅ আপডেট সফল! Bot restart হচ্ছে...")
+            time.sleep(2)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        else:
+            bot.send_message(DEVELOPER_ID, "✅ Bot ইতিমধ্যে সর্বশেষ version-এ আছে।")
 
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
